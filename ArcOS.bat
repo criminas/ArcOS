@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 title ArcOS
 
 echo.
@@ -11,21 +12,37 @@ echo.
 :: Admin check
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
 
+:: Move to script directory
 cd /d "%~dp0"
 
-:: Unblock files (safe)
-powershell -ExecutionPolicy Bypass -NoProfile -Command "Get-ChildItem '%~dp0' -Recurse | Unblock-File" >nul
+:: Unblock files safely
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"Get-ChildItem -LiteralPath '%~dp0' -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue" >nul 2>&1
 
 echo.
 echo Running ArcOS...
 echo.
 
-powershell -ExecutionPolicy Bypass -NoProfile -File "%~dp0main.ps1"
+:: Run main script
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0main.ps1"
+
+if %errorlevel% neq 0 (
+    echo.
+    echo ArcOS encountered an error.
+    pause
+    exit /b
+)
 
 echo.
-echo Done.
-pause
+echo ===================================
+echo        Optimization Complete
+echo ===================================
+echo.
+echo Restarting in 5 seconds...
+timeout /t 5 >nul
+
+shutdown /r /t 0
