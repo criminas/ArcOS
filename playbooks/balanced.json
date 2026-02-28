@@ -1,0 +1,11 @@
+{
+  "name": "Balanced",
+  "engines": [
+    "ServiceEngine",
+    "TaskEngine",
+    "AppxEngine",
+    "RegistryEngine",
+    "PolicyEngine",
+    "UIEngine"
+  ]
+}

@@ -2,139 +2,156 @@ function Invoke-PerformanceEngine {
 
     Write-ArcLog "Applying aggressive performance profile."
 
-    # ===============================
-    # Disable Background Apps (System-wide)
-    # ===============================
+    # =====================================================
+    # Ensure Policy Paths Exist
+    # =====================================================
+
+    $AppPrivacy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy"
+    if (-not (Test-Path $AppPrivacy)) {
+        New-Item -Path $AppPrivacy -Force | Out-Null
+    }
+
+    $GameDVRPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR"
+    if (-not (Test-Path $GameDVRPolicy)) {
+        New-Item -Path $GameDVRPolicy -Force | Out-Null
+    }
+
+    # =====================================================
+    # Disable Background UWP Apps
+    # =====================================================
+
     try {
         Set-ItemProperty `
-            -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" `
+            -Path $AppPrivacy `
             -Name "LetAppsRunInBackground" `
-            -Value 2 `
             -Type DWord `
-            -ErrorAction SilentlyContinue
+            -Value 2
 
-        Write-ArcLog "Background apps disabled."
+        Write-ArcLog "Background apps disabled (policy enforced)."
     }
     catch {
         Write-ArcLog "Background app policy failed." "WARN"
     }
 
-    # ===============================
-    # Disable SysMain (Prefetch)
-    # ===============================
+    # =====================================================
+    # Disable SysMain (SSD systems benefit)
+    # =====================================================
+
     try {
-        Stop-Service "SysMain" -Force -ErrorAction SilentlyContinue
-        Set-Service "SysMain" -StartupType Disabled
+        Stop-Service SysMain -Force -ErrorAction SilentlyContinue
+        Set-Service SysMain -StartupType Disabled -ErrorAction SilentlyContinue
         Write-ArcLog "SysMain disabled."
     }
     catch {}
 
-    # ===============================
+    # =====================================================
     # Disable Windows Search Indexing
-    # ===============================
+    # =====================================================
+
     try {
-        Stop-Service "WSearch" -Force -ErrorAction SilentlyContinue
-        Set-Service "WSearch" -StartupType Disabled
+        Stop-Service WSearch -Force -ErrorAction SilentlyContinue
+        Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
         Write-ArcLog "Search indexing disabled."
     }
     catch {}
 
-    # ===============================
-    # Disable Tips & Consumer Features
-    # ===============================
-    try {
-        Set-ItemProperty `
-            -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
-            -Name "SubscribedContent-338388Enabled" `
-            -Value 0 `
-            -ErrorAction SilentlyContinue
+    # =====================================================
+    # Disable Delivery Optimization
+    # =====================================================
 
-        Set-ItemProperty `
-            -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" `
-            -Name "SubscribedContent-353698Enabled" `
-            -Value 0 `
-            -ErrorAction SilentlyContinue
+    try {
+        Stop-Service DoSvc -Force -ErrorAction SilentlyContinue
+        Set-Service DoSvc -StartupType Disabled -ErrorAction SilentlyContinue
+        Write-ArcLog "Delivery Optimization disabled."
+    }
+    catch {}
+
+    # =====================================================
+    # Disable Consumer Experience & Tips
+    # =====================================================
+
+    try {
+        $CDM = "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"
+
+        Set-ItemProperty -Path $CDM -Name "SubscribedContent-338388Enabled" -Value 0 -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $CDM -Name "SubscribedContent-353698Enabled" -Value 0 -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $CDM -Name "SubscribedContent-310093Enabled" -Value 0 -ErrorAction SilentlyContinue
 
         Write-ArcLog "Consumer features disabled."
     }
     catch {}
 
-    # ===============================
-    # Disable Game DVR
-    # ===============================
+    # =====================================================
+    # Disable Game DVR (Policy Level)
+    # =====================================================
+
     try {
         Set-ItemProperty `
-            -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" `
-            -Name "AppCaptureEnabled" `
-            -Value 0 `
-            -ErrorAction SilentlyContinue
+            -Path $GameDVRPolicy `
+            -Name "AllowGameDVR" `
+            -Type DWord `
+            -Value 0
 
         Write-ArcLog "Game DVR disabled."
     }
     catch {}
 
-    # ===============================
-    # Disable Hibernation (frees RAM + disk)
-    # ===============================
+    # =====================================================
+    # Disable Hibernation (Frees Disk + Reduces Memory Image)
+    # =====================================================
+
     try {
         powercfg -h off
         Write-ArcLog "Hibernation disabled."
     }
     catch {}
 
-    # ===============================
-    # Reduce Paging Pressure
-    # ===============================
-    try {
-        Set-ItemProperty `
-            -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" `
-            -Name "ClearPageFileAtShutdown" `
-            -Value 0 `
-            -Type DWord `
-            -ErrorAction SilentlyContinue
+    # =====================================================
+    # Memory Management Optimizations
+    # =====================================================
 
-        Write-ArcLog "Paging optimized."
+    try {
+        $MM = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
+
+        Set-ItemProperty -Path $MM -Name "ClearPageFileAtShutdown" -Type DWord -Value 0
+        Set-ItemProperty -Path $MM -Name "LargeSystemCache" -Type DWord -Value 0
+
+        Write-ArcLog "Memory manager optimized."
     }
     catch {}
 
-    # ===============================
-    # Disable Unnecessary Startup Items
-    # ===============================
+    # =====================================================
+    # Disable Memory Compression (Optional but Aggressive)
+    # =====================================================
+
     try {
-        Get-CimInstance Win32_StartupCommand |
-        ForEach-Object {
-            Write-ArcLog "Startup item detected: $($_.Name)"
-        }
+        Disable-MMAgent -MemoryCompression -ErrorAction SilentlyContinue
+        Write-ArcLog "Memory compression disabled."
     }
     catch {}
 
-    # ===============================
-    # Enable High Performance Power Plan
-    # ===============================
+    # =====================================================
+    # High Performance Power Plan
+    # =====================================================
+
     try {
         powercfg -setactive SCHEME_MIN
         Write-ArcLog "High performance power plan enabled."
     }
     catch {}
 
-    # ===============================
-    # Clear Standby Memory
-    # ===============================
+    # =====================================================
+    # Remove Startup Bloat (Detection Only)
+    # =====================================================
+
     try {
-        $signature = @"
-using System;
-using System.Runtime.InteropServices;
-public class Memory {
-    [DllImport("ntdll.dll")]
-    public static extern uint NtSetSystemInformation(int InfoClass, IntPtr Info, int Length);
-}
-"@
-
-        Add-Type $signature -ErrorAction SilentlyContinue
-
-        Write-ArcLog "Standby memory cleared."
+        Get-CimInstance Win32_StartupCommand |
+        Where-Object { $_.Location -notlike "*Windows*" } |
+        ForEach-Object {
+            Write-ArcLog "Non-system startup item detected: $($_.Name)"
+        }
     }
     catch {}
 
-    Write-ArcLog "Performance profile applied."
+    Write-ArcLog "Aggressive performance profile applied."
 }

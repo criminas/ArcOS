@@ -2,7 +2,7 @@ function Invoke-AvatarEngine {
 
     Write-ArcLog "Replacing user profile picture."
 
-    $Source = Join-Path $PSScriptRoot "..\wallpapers\pfp.png"
+    $Source = Join-Path $PSScriptRoot "..\user\pfp.png"
 
     if (-not (Test-Path $Source)) {
         Write-ArcLog "pfp.png not found." "ERROR"

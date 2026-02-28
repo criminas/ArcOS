@@ -1,10 +1,10 @@
 function Invoke-AppxEngine {
 
-    Write-ArcLog "Starting aggressive AppX removal."
+    Write-ArcLog "Starting aggressive AppX rationalization."
 
-    # ===============================
-    # Protected Core Components
-    # ===============================
+    # =====================================================
+    # CORE PROTECTED PACKAGES (DO NOT TOUCH)
+    # =====================================================
 
     $Protected = @(
         "Microsoft.NET.Native.Framework",
@@ -16,136 +16,138 @@ function Invoke-AppxEngine {
         "Microsoft.Windows.ShellExperienceHost",
         "Microsoft.Windows.StartMenuExperienceHost",
         "Microsoft.AAD.BrokerPlugin",
-        "Microsoft.AccountsControl"
+        "Microsoft.AccountsControl",
+        "Microsoft.DesktopAppInstaller",
+        "Microsoft.Windows.CloudExperienceHost",
+        "Microsoft.Win32WebViewHost"
     )
 
-    # ===============================
+    # =====================================================
+    # SAFE REMOVAL LIST (Consumer Layer Only)
+    # =====================================================
+
+    $Removable = @(
+        "Microsoft.BingNews",
+        "Microsoft.BingWeather",
+        "Microsoft.GetHelp",
+        "Microsoft.Getstarted",
+        "Microsoft.MicrosoftOfficeHub",
+        "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People",
+        "Microsoft.PowerAutomateDesktop",
+        "Microsoft.Todos",
+        "Microsoft.YourPhone",
+        "Microsoft.ZuneMusic",
+        "Microsoft.ZuneVideo",
+        "Microsoft.LinkedIn",
+        "Microsoft.XboxApp",
+        "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxGameOverlay",
+        "Microsoft.XboxSpeechToTextOverlay",
+        "Microsoft.XboxIdentityProvider"
+    )
+
+    # =====================================================
     # Remove Provisioned Packages
-    # ===============================
+    # =====================================================
 
-    $Provisioned = Get-AppxProvisionedPackage -Online
+    foreach ($pkg in Get-AppxProvisionedPackage -Online) {
 
-    foreach ($pkg in $Provisioned) {
+        if ($Removable -contains $pkg.DisplayName) {
 
-        $name = $pkg.DisplayName
-
-        if ($Protected -contains $name) { continue }
-
-        try {
-            Remove-AppxProvisionedPackage `
-                -Online `
-                -PackageName $pkg.PackageName `
-                -ErrorAction SilentlyContinue | Out-Null
-
-            Write-ArcLog "Removed provisioned: $name"
-        }
-        catch {
-            Write-ArcLog "Provisioned removal failed: $name" "WARN"
-        }
-    }
-
-    # ===============================
-    # Remove Installed Packages
-    # ===============================
-
-    $Installed = Get-AppxPackage -AllUsers
-
-    foreach ($app in $Installed) {
-
-        $name = $app.Name
-
-        if ($Protected -contains $name) { continue }
-
-        try {
-            Remove-AppxPackage `
-                -Package $app.PackageFullName `
-                -AllUsers `
-                -ErrorAction SilentlyContinue
-
-            Write-ArcLog "Removed installed: $name"
-        }
-        catch {
-            Write-ArcLog "Installed removal failed: $name" "WARN"
-        }
-    }
-
-    Write-ArcLog "Store apps removal complete."
-
-    # ===============================
-    # Remove Microsoft Edge
-    # ===============================
-
-    $EdgePath = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application"
-
-    if (Test-Path $EdgePath) {
-        $Installer = Get-ChildItem `
-            "$EdgePath\*\Installer\setup.exe" `
-            -Recurse `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-
-        if ($Installer) {
             try {
-                Start-Process `
-                    -FilePath $Installer.FullName `
-                    -ArgumentList "--uninstall --system-level --force-uninstall --verbose-logging" `
-                    -Wait `
-                    -NoNewWindow
+                Remove-AppxProvisionedPackage `
+                    -Online `
+                    -PackageName $pkg.PackageName `
+                    -ErrorAction SilentlyContinue | Out-Null
 
-                Write-ArcLog "Edge uninstall attempted."
+                Write-ArcLog "Removed provisioned: $($pkg.DisplayName)"
             }
             catch {
-                Write-ArcLog "Edge uninstall failed." "WARN"
+                Write-ArcLog "Provisioned removal failed: $($pkg.DisplayName)" "WARN"
             }
         }
     }
 
-    # ===============================
-    # Remove WebView2
-    # ===============================
+    # =====================================================
+    # Remove Installed Packages
+    # =====================================================
 
-    $WebView = Get-ItemProperty `
-        "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" `
-        -ErrorAction SilentlyContinue |
-        Where-Object { $_.DisplayName -like "*WebView2*" }
+    foreach ($app in Get-AppxPackage -AllUsers) {
 
-    foreach ($entry in $WebView) {
-        try {
-            Start-Process `
-                -FilePath "msiexec.exe" `
-                -ArgumentList "/x $($entry.PSChildName) /quiet /norestart" `
-                -Wait `
-                -NoNewWindow
+        if ($Removable -contains $app.Name) {
 
-            Write-ArcLog "Removed WebView2."
-        }
-        catch {
-            Write-ArcLog "WebView2 removal failed." "WARN"
+            try {
+                Remove-AppxPackage `
+                    -Package $app.PackageFullName `
+                    -AllUsers `
+                    -ErrorAction SilentlyContinue
+
+                Write-ArcLog "Removed installed: $($app.Name)"
+            }
+            catch {
+                Write-ArcLog "Installed removal failed: $($app.Name)" "WARN"
+            }
         }
     }
 
-    # ===============================
-    # Install Waterfox
-    # ===============================
+    Write-ArcLog "Consumer AppX removal complete."
 
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    # =====================================================
+    # Disable Xbox Services (Safer than Removing Core Packages)
+    # =====================================================
 
-    if ($winget) {
+    $XboxServices = @(
+        "XblAuthManager",
+        "XblGameSave",
+        "XboxNetApiSvc",
+        "XboxGipSvc"
+    )
+
+    foreach ($svc in $XboxServices) {
+        try {
+            Stop-Service $svc -ErrorAction SilentlyContinue
+            Set-Service $svc -StartupType Disabled -ErrorAction SilentlyContinue
+            Write-ArcLog "Disabled service: $svc"
+        }
+        catch {}
+    }
+
+    # =====================================================
+    # Edge – Disable Instead of Breaking Servicing
+    # =====================================================
+
+    $edgePolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+
+    if (-not (Test-Path $edgePolicy)) {
+        New-Item -Path $edgePolicy -Force | Out-Null
+    }
+
+    Set-ItemProperty -Path $edgePolicy -Name "StartupBoostEnabled" -Type DWord -Value 0
+    Set-ItemProperty -Path $edgePolicy -Name "BackgroundModeEnabled" -Type DWord -Value 0
+
+    Write-ArcLog "Edge background behavior disabled."
+
+    # =====================================================
+    # Install Waterfox via Winget (Correct ID)
+    # =====================================================
+
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
         try {
             Start-Process `
                 -FilePath "winget" `
-                -ArgumentList "install --id Waterfox.Waterfox -e --silent --accept-package-agreements --accept-source-agreements" `
+                -ArgumentList "install WaterfoxLtd.Waterfox -e --silent --accept-package-agreements --accept-source-agreements" `
                 -Wait `
                 -NoNewWindow
 
-            Write-ArcLog "Waterfox installed."
+            Write-ArcLog "Waterfox installation attempted."
         }
         catch {
-            Write-ArcLog "Waterfox install failed." "ERROR"
+            Write-ArcLog "Waterfox install failed." "WARN"
         }
     }
     else {
-        Write-ArcLog "winget not found. Skipping Waterfox install." "ERROR"
+        Write-ArcLog "winget not available." "WARN"
     }
 
     Write-ArcLog "AppX engine complete."

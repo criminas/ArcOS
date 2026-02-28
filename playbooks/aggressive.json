@@ -1,0 +1,14 @@
+{
+  "name": "Aggressive",
+  "engines": [
+    "OneDriveEngine",
+    "ServiceEngine",
+    "TaskEngine",
+    "AppxEngine",
+    "RegistryEngine",
+    "PolicyEngine",
+    "PerformanceEngine",
+    "UIEngine",
+    "WallpaperEngine"
+  ]
+}

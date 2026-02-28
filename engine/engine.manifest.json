@@ -1,0 +1,26 @@
+{
+  "ServiceEngine": {
+    "risk": "Stable",
+    "requiresReboot": false,
+    "reversible": true,
+    "minBuild": 19045
+  },
+  "AppxEngine": {
+    "risk": "Performance",
+    "requiresReboot": false,
+    "reversible": true,
+    "minBuild": 19045
+  },
+  "PerformanceEngine": {
+    "risk": "Performance",
+    "requiresReboot": true,
+    "reversible": true,
+    "minBuild": 19045
+  },
+  "OneDriveEngine": {
+    "risk": "Minimal",
+    "requiresReboot": true,
+    "reversible": false,
+    "minBuild": 19045
+  }
+}
